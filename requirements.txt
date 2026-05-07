@@ -1,1 +1,7 @@
-
+streamlit
+yfinance
+scikit-learn
+numpy
+vaderSentiment 
+sentence-transformers 
+pinecone-client

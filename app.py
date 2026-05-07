@@ -10,6 +10,9 @@ import streamlit as st
 from chatbot import chat
 import time
 
+from financial import financial_analyze
+from sentiment import sentiment_analyze
+from risk import compute_risk
 
 def write_introduction():
     intro = """
@@ -62,19 +65,19 @@ else:
 
 # Check module availability and set flags
 try:
-    from financial import analyze as financial_analyze
+    from financial import financial_analyze
     FINANCIAL_READY = True
 except ImportError:
     FINANCIAL_READY = False
 
 try:
-    from sentiment import analyze as sentiment_analyze
+    from sentiment import sentiment_analyze
     SENTIMENT_READY = True
 except ImportError:
     SENTIMENT_READY = False
 
 try:
-    from risk import evaluate as risk_assess
+    from risk import compute_risk 
     RISK_READY = True
 except ImportError:
     RISK_READY = False
@@ -89,7 +92,7 @@ with st.sidebar:
     st.subheader("Module Status")
     def _pill(label, ready):
         dot = '<span style="color:#4ade80">●</span>' if ready else '<span style="color:#f87171">●</span>'
-        status = "ready" if ready else "pending"
+        status = "Ready" if ready else "Not Ready"
         return f'<span>{dot} {label} — {status}</span>'
 
     st.markdown(
