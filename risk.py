@@ -165,9 +165,11 @@ def compute_risk(financial: dict, sentiment: dict, method: str = "rule_based") -
     )
  
     return {
-        "level":          level,
-        "trust_score":    trust_score,
-        "recommendation": recommendation,
+        "level":            level,
+        "trust_score":      trust_score,
+        "recommendation":   recommendation,
+        "raw_risk_score":   risk_score,
+        "method":           method,
     }
 
     #raise NotImplementedError("risk.py is not implemented yet.")
