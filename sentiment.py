@@ -27,7 +27,7 @@
 #
 # Dataset:
 #   git clone https://github.com/Webhose/financial-news-dataset
-#   Set DATASET_PATH below to the cloned folder path
+#   Set DATASET_PATH below to the cloned folder path (make sure it's extracted)
  
 import os
 import json
@@ -158,10 +158,10 @@ def _embed(text: str) -> list:
     """
     Convert text to embedding vector.
     Must match the embedding model used to build the Pinecone index.
-    Default: all-MiniLM-L6-v2
+    Default: all-MiniLM-L6-v2 -> text-embedding-3-small
     """
     from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+    model = SentenceTransformer("text-embedding-3-small")
     return model.encode(text).tolist()
  
  

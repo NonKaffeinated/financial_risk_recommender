@@ -4,7 +4,7 @@ import re
 import requests
 import json
 import os
-
+import yfinance as yf
 from risk import FINANCIAL_WEIGHT, SENTIMENT_WEIGHT
 
 # Make sure Ollama is running: https://ollama.com
@@ -39,7 +39,7 @@ Only use data explicitly provided to you and never invent numbers.
 """.strip()
 
 _TICKER_BLOCKLIST = frozenset({
-    "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HER", "WAS", "ONE",
+    "NEWS", "WHY", "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HER", "WAS", "ONE",
     "OUR", "OUT", "DAY", "GET", "HAS", "HIM", "HOW", "ITS", "MAY", "NEW", "NOW", "OLD",
     "SEE", "TWO", "WHO", "BOY", "DID", "LET", "PUT", "SAY", "SHE", "TOO", "USE", "LOW",
     "HIGH", "RISK", "FROM", "WHAT", "WITH", "HAVE", "THIS", "THAT", "WILL", "YOUR", "ANY",
@@ -55,52 +55,49 @@ _TICKER_BLOCKLIST = frozenset({
     "IF", "OK", "DO", "GO", "ME", "MY", "WE", "US", "AM", "PM",
 })
 
-# Company / brand names → Yahoo ticker (e.g. "NVIDIA!" has no NVDA symbol for the regex path)
-_NAME_TO_TICKER: dict[str, str] = {
-    "berkshire hathaway": "BRK-B",
-    "bank of america": "BAC",
-    "johnson and johnson": "JNJ",
-    "jpmorgan": "JPM",
-    "nvidia": "NVDA",
-    "apple": "AAPL",
-    "microsoft": "MSFT",
-    "tesla": "TSLA",
-    "amazon": "AMZN",
-    "alphabet": "GOOGL",
-    "google": "GOOGL",
-    "meta": "META",
-    "facebook": "META",
-    "netflix": "NFLX",
-    "disney": "DIS",
-    "intel": "INTC",
-    "amd": "AMD",
-    "oracle": "ORCL",
-    "cisco": "CSCO",
-    "broadcom": "AVGO",
-    "qualcomm": "QCOM",
-    "salesforce": "CRM",
-    "adobe": "ADBE",
-    "nvidia corporation": "NVDA",
-    "bed bath and beyond": "BBBY",
-    "beyond meat": "BYND",
-}
+def _resolve_ticker(query: str) -> str | None:
+    """Resolve any company name or ticker to a valid stock symbol via yfinance search."""
+    try:
+        results = yf.Search(query, max_results=3)
+        quotes  = results.quotes
 
+        if not quotes:
+            return None
 
+        for quote in quotes:
+            if quote.get("quoteType") == "EQUITY":
+                return quote.get("symbol")
+
+        return None
+    except Exception:
+        return None
+    
 def extract_ticker(prompt: str) -> str | None:
-    """Resolve a ticker from symbols (NVDA) or company names (NVIDIA → NVDA)."""
-    for m in re.finditer(r"\b([A-Z]{2,5})\b", prompt.upper()):
-        token = m.group(1)
-        if token not in _TICKER_BLOCKLIST:
-            return token
+    """
+    Extract company name or ticker from a sentence and resolve to ticker.
+    """
+    # First try resolving the whole prompt (works for single word inputs)
+    if len(prompt.strip().split()) <= 3:
+        result = _resolve_ticker(prompt.strip())
+        if result:
+            return result
 
-    lower = prompt.lower()
-    for name in sorted(_NAME_TO_TICKER.keys(), key=len, reverse=True):
-        if " " in name:
-            pattern = r"\b" + r"\s+".join(re.escape(p) for p in name.split()) + r"\b"
-        else:
-            pattern = rf"\b{re.escape(name)}\b"
-        if re.search(pattern, lower):
-            return _NAME_TO_TICKER[name]
+    # For longer sentences extract candidate words/phrases and try each
+    # Try multi-word phrases first (2-3 words)
+    words = prompt.strip().split()
+    for n in [3, 2]:
+        for i in range(len(words) - n + 1):
+            phrase = " ".join(words[i:i+n])
+            result = _resolve_ticker(phrase)
+            if result:
+                return result
+
+    # Try single words
+    for word in words:
+        if word.upper() not in _TICKER_BLOCKLIST:
+            result = _resolve_ticker(word)
+            if result:
+                return result
 
     return None
 

@@ -8,12 +8,7 @@ Integrates: chatbot.py (ME), financial.py (teammate), sentiment.py (teammate), r
 import os
 import streamlit as st
 import time
-
 from chatbot import chat, extract_ticker, format_scoring_markdown
-
-from financial import financial_analyze
-from sentiment import sentiment_analyze
-from risk import compute_risk
 
 SCORING_MARKER = "### Data & scores used\n\n"
 SCORING_REPLY_SEP = "\n\n---\n\n"
