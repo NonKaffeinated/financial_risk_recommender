@@ -104,7 +104,7 @@ def _load_articles(path: str) -> list:
 
 def _train_model(articles: list):
     texts  = [a.get("text", a.get("title", ""))[:500] for a in articles]
-    labels = [a.get("_label", 2) for a in articles]  # ← real labels, not predicted
+    labels = [a.get("_label", 2) for a in articles]  # real labels, not predicted
 
     vectorizer = TfidfVectorizer(max_features=5000, stop_words="english")
     X          = vectorizer.fit_transform(texts)
@@ -115,7 +115,6 @@ def _train_model(articles: list):
  
 
 # Article fetching 
- 
 def _get_articles_local(ticker: str) -> list:
     """Filter local Webhose articles by ticker or company name."""
     keyword  = TICKER_TO_NAME.get(ticker.upper(), ticker.lower())
@@ -158,10 +157,10 @@ def _embed(text: str) -> list:
     """
     Convert text to embedding vector.
     Must match the embedding model used to build the Pinecone index.
-    Default: all-MiniLM-L6-v2 -> text-embedding-3-small
+    Default: all-MiniLM-L6-v2
     """
     from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer("text-embedding-3-small")
+    model = SentenceTransformer("all-MiniLM-L6-v2")
     return model.encode(text).tolist()
  
  
@@ -255,8 +254,6 @@ def sentiment_analyze(ticker: str) -> dict:
         "label":        label,
         "news_summary": news_summary,
     }
-
-    #raise NotImplementedError("sentiment.py is not implemented yet.")
 
 # Run startup 
 _startup()

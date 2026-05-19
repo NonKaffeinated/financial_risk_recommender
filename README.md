@@ -29,8 +29,7 @@ cd <repo-folder>
 
 ### 2. Install dependencies
 ```bash
-pip install streamlit requests yfinance scikit-learn \
-            numpy sentence-transformers pinecone-client
+pip install -r requirements.txt
 ```
 
 ### 3. Download the news dataset
@@ -78,6 +77,10 @@ USE_PINECONE=false
 streamlit run app.py
 ```
 
+### 7. Ask about a company using a ticker or the company name
+Ask with braces: **What's the risk for {Apple}?** or **{NVDA}**
+
+Note: yfinance resolves name/ticker to an equity symbol before analysis. Without {...}, you get general chat only (no scoring).
 
 
 ## Module Contract
@@ -88,7 +91,8 @@ Each module must return exactly this shape. Do not change keys or types.
 |---|---|---|
 | `financial.py` | `financial_analyze(ticker: str)` | `{ anomaly_score: float, flags: list[str], summary: str }` |
 | `sentiment.py` | `sentiment_analyze(ticker: str)` | `{ score: float, label: str, news_summary: str }` |
-| `risk.py` | `compute_risk(financial: dict, sentiment: dict)` | `{ level: str, trust_score: float, recommendation: str }` |
+| `risk.py` | `compute_risk(financial: dict, sentiment: dict)` | `{ level: str, trust_score: float, recommendation: str, raw_risk_score: float, method: str }` |
+
 
 ## Methodology
 
@@ -126,7 +130,7 @@ Each module must return exactly this shape. Do not change keys or types.
 
 **Future Work**
 - [ ] Implement real-time news articles instead of static dataset (regularly updated)
-- [ ] Improve article retrival
+- [ ] Improve article retrieval
 - [ ] Improve Streamlit UI
 - [ ] Experiment with various advanced models and parameters to improve risk analysis
 - [ ] `financial.py` — Logistic Regression / Random Forest with SEC fraud dataset
@@ -165,14 +169,13 @@ Expected output for struggling companies (BYND, BBBY):
 |---|---|
 | **Kathleen** | `app.py`, `chatbot.py`, `llm.py`, `sentiment.py`, `financial.py` — UI, conversation logic, LLM integration, news sentiment analysis, Yahoo Finance anomaly detection |
 | **Felix** | Pinecone knowledge base — financial news vector store |
-| **Kevin** | |
+| **Kevin** | EDA, benchmarking and evaluation|
 
 
 ## Important Notes
 
 - **Dataset not in repo** — clone Webhose dataset separately and unzip into `financial-news-dataset/Datasets/extracted/`
 - **Ensure Ollama llama3 is running** - refer to "Getting Started"
-- **Stub fallbacks** — if a module is missing, `app.py` falls back to safe defaults so the app still runs
 - **Do not change function signatures** — `app.py` and `chatbot.py` depend on them
 - **Pinecone ready** — set `USE_PINECONE=true` in `.env` when Felix's knowledge base is ready, no other changes needed
 - **Limitations** - Smaller companies, foreign companies, and recently listed companies may have insufficient article coverage to produce a reliable sentiment score. In these cases the system defaults to a neutral score of 0.0, which reduces the sentiment signal's contribution to the composite risk score. 

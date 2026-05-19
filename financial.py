@@ -169,5 +169,3 @@ def financial_analyze(ticker: str) -> dict:
         "flags":         flags,
         "summary":       summary,
     }
-
-    #raise NotImplementedError("financial.py is not implemented yet.")

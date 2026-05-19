@@ -142,6 +142,8 @@ def compute_risk(financial: dict, sentiment: dict, method: str = "rule_based") -
         "level":          str,   # "Low", "Medium", or "High"
         "trust_score":    float, # 0 (least trustworthy) to 100 (most trustworthy)
         "recommendation": str    # plain English action recommendation
+        "raw_risk_score": 
+        "method":
     }
     """
     # Step 1: compute raw risk score
@@ -171,5 +173,3 @@ def compute_risk(financial: dict, sentiment: dict, method: str = "rule_based") -
         "raw_risk_score":   risk_score,
         "method":           method,
     }
-
-    #raise NotImplementedError("risk.py is not implemented yet.")

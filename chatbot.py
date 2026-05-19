@@ -39,6 +39,7 @@ Only use data explicitly provided to you and never invent numbers.
 """.strip()
 
 _TICKER_BLOCKLIST = frozenset({
+    "HOLD", "SELL", "BUY", "STOCKS", "STOCK", "SHOULD",
     "NEWS", "WHY", "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HER", "WAS", "ONE",
     "OUR", "OUT", "DAY", "GET", "HAS", "HIM", "HOW", "ITS", "MAY", "NEW", "NOW", "OLD",
     "SEE", "TWO", "WHO", "BOY", "DID", "LET", "PUT", "SAY", "SHE", "TOO", "USE", "LOW",
@@ -56,51 +57,52 @@ _TICKER_BLOCKLIST = frozenset({
 })
 
 def _resolve_ticker(query: str) -> str | None:
-    """Resolve any company name or ticker to a valid stock symbol via yfinance search."""
+    """Resolve a company name or ticker hint to a valid equity symbol via yfinance."""
+    query = query.strip()
+    if not query or query.upper() in _TICKER_BLOCKLIST:
+        return None
+
     try:
-        results = yf.Search(query, max_results=3)
-        quotes  = results.quotes
+        results = yf.Search(query, max_results=5)
+        quotes = results.quotes or []
+    except Exception:
+        quotes = []
 
-        if not quotes:
-            return None
-
+    if quotes:
+        want = query.upper()
+        for quote in quotes:
+            if quote.get("quoteType") == "EQUITY" and quote.get("symbol", "").upper() == want:
+                return quote.get("symbol")
         for quote in quotes:
             if quote.get("quoteType") == "EQUITY":
                 return quote.get("symbol")
 
+    return _validate_ticker_direct(query)
+
+
+def _validate_ticker_direct(query: str) -> str | None:
+    """Fallback when search fails: accept input if Yahoo recognizes it as an equity."""
+    symbol = query.upper()
+    if symbol in _TICKER_BLOCKLIST:
         return None
+    try:
+        info = yf.Ticker(symbol).info
+        if info.get("quoteType") == "EQUITY":
+            return info.get("symbol") or symbol
     except Exception:
-        return None
-    
-def extract_ticker(prompt: str) -> str | None:
-    """
-    Extract company name or ticker from a sentence and resolve to ticker.
-    """
-    # First try resolving the whole prompt (works for single word inputs)
-    if len(prompt.strip().split()) <= 3:
-        result = _resolve_ticker(prompt.strip())
-        if result:
-            return result
-
-    # For longer sentences extract candidate words/phrases and try each
-    # Try multi-word phrases first (2-3 words)
-    words = prompt.strip().split()
-    for n in [3, 2]:
-        for i in range(len(words) - n + 1):
-            phrase = " ".join(words[i:i+n])
-            result = _resolve_ticker(phrase)
-            if result:
-                return result
-
-    # Try single words
-    for word in words:
-        if word.upper() not in _TICKER_BLOCKLIST:
-            result = _resolve_ticker(word)
-            if result:
-                return result
-
+        pass
     return None
 
+
+def extract_ticker(prompt: str) -> str | None:
+    """
+    Extract {company or ticker} from the prompt and resolve to a Yahoo equity symbol.
+    Example: "How risky is {Nvidia}?" -> "NVDA"
+    """
+    matches = re.findall(r"\{([^{}]+)\}", prompt)
+    if not matches:
+        return None
+    return _resolve_ticker(matches[0])
 
 def format_scoring_markdown(
     ticker: str,
@@ -132,38 +134,21 @@ def format_scoring_markdown(
         ]
     )
 
-
 def chat(
-    user_message: str,
-    history: list[dict],
-    scoring_context: str | None = None,
+    history: list[dict]
 ):
+
     """
     Stream tokens for st.write_stream.
 
     *history* must be the conversation so far **not including** the current user turn
     (the app stores the user message in session state separately).
     """
-    if scoring_context:
-        user_content = (
-            f"{user_message}\n\n---\n"
-            "Structured analysis — the only numbers and labels you may cite for this company:\n"
-            f"{scoring_context}"
-        )
-    else:
-        user_content = user_message
-
-    all_messages = (
-        [{"role": "system", "content": SYSTEM_PROMPT}]
-        + history
-        + [{"role": "user", "content": user_content}]
-    )
-
     response = requests.post(
         f"{OLLAMA_HOST}/api/chat",
         json={
             "model":    OLLAMA_MODEL,
-            "messages": all_messages,
+            "messages": history,
             "stream":   True,        
         },
         stream=True,
@@ -177,4 +162,5 @@ def chat(
             chunk = json.loads(line)
             token = chunk.get("message", {}).get("content", "")
             full_reply += token
-            yield token              
+            yield token        
+

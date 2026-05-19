@@ -10,6 +10,10 @@ import streamlit as st
 import time
 from chatbot import chat, extract_ticker, format_scoring_markdown
 
+from financial import financial_analyze
+from sentiment import sentiment_analyze
+from risk import compute_risk 
+
 SCORING_MARKER = "### Data & scores used\n\n"
 SCORING_REPLY_SEP = "\n\n---\n\n"
 
@@ -24,7 +28,7 @@ def _split_scoring_reply(content: str) -> tuple[str | None, str]:
 
 
 def write_introduction():
-    intro = """
+    intro = f"""
 Welcome to FinSage, your trusted advisor for financial risk and trustworthiness!
 Ask about any company. FinSage breaks down financial health risk and news sentiment into a clear picture.
 
@@ -33,7 +37,7 @@ Here's what I can help with:
 - **Risk identification** — spot potential threats to a company's financial stability
 - **News sentiment** — understand public and media sentiment around any company
 
-What company can FinSage help you analyze today?
+What company can FinSage help you analyze today? Use the format {{Company/Ticker}}.
     """.strip().split(' ')
 
     for word in intro:
@@ -55,7 +59,6 @@ st.divider()
 # Session state
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
-
 if "intro_shown" not in st.session_state:
     st.session_state.intro_shown = False
 
@@ -81,25 +84,6 @@ else:
             else:
                 st.markdown(message["content"])
 
-# Check module availability and set flags
-try:
-    from financial import financial_analyze
-    FINANCIAL_READY = True
-except ImportError:
-    FINANCIAL_READY = False
-
-try:
-    from sentiment import sentiment_analyze
-    SENTIMENT_READY = True
-except ImportError:
-    SENTIMENT_READY = False
-
-try:
-    from risk import compute_risk 
-    RISK_READY = True
-except ImportError:
-    RISK_READY = False
-
 # Sidebar
 with st.sidebar:
     # Header
@@ -107,36 +91,26 @@ with st.sidebar:
     st.subheader("Welcome to FinSage!")
     st.divider()
 
-    st.subheader("Module Status")
     def _pill(label, ready):
         dot = '<span style="color:#4ade80">●</span>' if ready else '<span style="color:#f87171">●</span>'
         status = "Ready" if ready else "Not Ready"
         return f'<span>{dot} {label} — {status}</span>'
 
-    st.markdown(
-        _pill("financial.py", FINANCIAL_READY) + "<br>" +
-        _pill("sentiment.py", SENTIMENT_READY) + "<br>" +
-        _pill("risk.py",      RISK_READY),
-        unsafe_allow_html=True,
-    )
-
     # Clear chat button
     if st.button("Clear chat"):
-        st.session_state.chat_history = []
+        st.session_state.chat_history = [] # Reset chat history
         st.session_state.intro_shown = False # Reset intro flag
         st.rerun() 
 
 # User input
 if prompt := st.chat_input("Ask about a company's financial risk..."):
-    st.session_state.chat_history.append({"role": "user", "content": prompt})
 
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    scoring_md = None
     ticker = extract_ticker(prompt)
+
     risk_method = os.environ.get("RISK_METHOD", "rule_based")
-    if ticker and FINANCIAL_READY and SENTIMENT_READY and RISK_READY:
+
+
+    if ticker is not None:
         with st.spinner(f"Loading data for {ticker}..."):
             try:
                 fin = financial_analyze(ticker)
@@ -145,24 +119,17 @@ if prompt := st.chat_input("Ask about a company's financial risk..."):
                 scoring_md = format_scoring_markdown(ticker, fin, sent, risk)
             except Exception as exc:
                 st.warning(f"Could not load scoring data for {ticker}: {exc}")
+                scoring_md = f'Could not load scoring data for {ticker}: {exc}'
+            prompt = f"{prompt} + \n\n\nREPORT FOR '{ticker}':\n{scoring_md}"
 
-    # Expanders nested inside st.chat_message often fail to render; keep it outside the bubble.
-    if scoring_md:
-        with st.expander("Data & scores used for this answer", expanded=True):
-            st.markdown(scoring_md)
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    st.session_state.chat_history.append({"role": "user", "content": prompt}) 
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             reply = st.write_stream(
-                chat(prompt, st.session_state.chat_history[:-1], scoring_md)
+                chat(st.session_state.chat_history) # history includes current turn
             )
-
-    assistant_content = (
-        SCORING_MARKER
-        + scoring_md
-        + SCORING_REPLY_SEP
-        + (reply or "")
-        if scoring_md
-        else (reply or "")
-    )
-    st.session_state.chat_history.append({"role": "assistant", "content": assistant_content})
+    # Append assistant reply to history
+    st.session_state.chat_history.append({"role": "assistant", "content": reply})  # save for next turn
