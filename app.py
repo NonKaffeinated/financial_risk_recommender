@@ -8,16 +8,11 @@ Integrates: chatbot.py (ME), financial.py (teammate), sentiment.py (teammate), r
 import os
 import streamlit as st
 import time
-from chatbot import chat, extract_ticker, format_scoring_markdown
-
-from financial import financial_analyze
-from sentiment import sentiment_analyze
-from risk import compute_risk 
 
 SCORING_MARKER = "### Data & scores used\n\n"
 SCORING_REPLY_SEP = "\n\n---\n\n"
 
-
+# Checks for a scoring section
 def _split_scoring_reply(content: str) -> tuple[str | None, str]:
     """If this assistant turn includes a scoring section, return (scoring_md, reply); else (None, full)."""
     if content.startswith(SCORING_MARKER) and SCORING_REPLY_SEP in content:
@@ -62,6 +57,35 @@ if "chat_history" not in st.session_state:
 if "intro_shown" not in st.session_state:
     st.session_state.intro_shown = False
 
+
+# Sidebar
+with st.sidebar:
+    # Header
+    st.title("Main Menu")
+    st.subheader("Welcome to FinSage!")
+    st.divider()
+
+    def _pill(label, ready):
+        dot = '<span style="color:#4ade80">●</span>' if ready else '<span style="color:#f87171">●</span>'
+        status = "Ready" if ready else "Not Ready"
+        return f'<span>{dot} {label} — {status}</span>'
+
+    # Clear chat button
+    if st.button("Clear chat"):
+        st.session_state.chat_history = [] # Reset chat history
+        st.session_state.intro_shown = False # Reset intro flag
+        st.rerun() 
+
+# Added spinners for each import to indicate loading status of each component
+with st.spinner("Training Isolation Forest on baseline companies..."):
+    from financial import financial_analyze
+with st.spinner("Training Logistic Regression and TF-IDF on financial news articles..."):
+    from sentiment import sentiment_analyze
+with st.spinner("Weighting risk scores..."):
+    from risk import compute_risk 
+with st.spinner("Loading Llama 3 model from Ollama..."):
+    from chatbot import chat, extract_ticker, format_scoring_markdown
+    
 # If intro not shown, show it and save to history. Otherwise, render chat history from session state. 
 # Ensures introduction is shown only on first visit or after clearing chat, and chat history persists across interactions without re-rendering the intro.
 if not st.session_state.intro_shown:
@@ -84,23 +108,6 @@ else:
             else:
                 st.markdown(message["content"])
 
-# Sidebar
-with st.sidebar:
-    # Header
-    st.title("Main Menu")
-    st.subheader("Welcome to FinSage!")
-    st.divider()
-
-    def _pill(label, ready):
-        dot = '<span style="color:#4ade80">●</span>' if ready else '<span style="color:#f87171">●</span>'
-        status = "Ready" if ready else "Not Ready"
-        return f'<span>{dot} {label} — {status}</span>'
-
-    # Clear chat button
-    if st.button("Clear chat"):
-        st.session_state.chat_history = [] # Reset chat history
-        st.session_state.intro_shown = False # Reset intro flag
-        st.rerun() 
 
 # User input
 if prompt := st.chat_input("Ask about a company's financial risk..."):

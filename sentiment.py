@@ -30,6 +30,7 @@
 #   Set DATASET_PATH below to the cloned folder path (make sure it's extracted)
  
 import os
+import re
 import json
 import glob
  
@@ -53,6 +54,9 @@ TICKER_TO_NAME = {
     "META":  "meta facebook",
     "JPM":   "jpmorgan",
     "NFLX":  "netflix",
+    "GME":  "gamestop",
+    "PLTR": "palantir",
+    "AMD": "amd advanced micro devices",
 }
  
 LABEL_MAP = {1: "Positive", 0: "Negative", 2: "Neutral"}
@@ -103,8 +107,8 @@ def _load_articles(path: str) -> list:
     return articles
 
 def _train_model(articles: list):
-    texts  = [a.get("text", a.get("title", ""))[:500] for a in articles]
-    labels = [a.get("_label", 2) for a in articles]  # real labels, not predicted
+    texts  = [a.get("text", a.get("title", ""))[:500] for a in articles] # use text if available, otherwise title; limit to 500 chars for efficiency
+    labels = [a.get("_label", 2) for a in articles]  # real labels from dataset, not predicted
 
     vectorizer = TfidfVectorizer(max_features=5000, stop_words="english")
     X          = vectorizer.fit_transform(texts)
@@ -113,17 +117,56 @@ def _train_model(articles: list):
 
     return vectorizer, model
  
+# List of financial keywords to check for relevance filtering (can expand as needed) 
+FINANCIAL_KEYWORDS = {
+    "earnings", "revenue", "profit", "stock", "shares", "quarterly",
+    "financial", "investors", "growth", "margin", "forecast", "results",
+    "semiconductor", "chip", "gpu", "cpu", "data center", "regulation", "lawsuit",
+    "scandal", "bankruptcy", "layoffs", "merger", "acquisition"
+}
+
+# Clean text by removing code snippets, HTML tags, and extra whitespace
+def _clean_text(text: str) -> str:
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)  # markdown links → plain text
+    text = re.sub(r'function\s+\w+\s*\([^)]*\)\s*\{[^}]*\}', '', text)
+    text = re.sub(r'\{[^}]{0,500}\}', '', text)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'https?://\S+', '', text)               # remove URLs
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 # Article fetching 
 def _get_articles_local(ticker: str) -> list:
     """Filter local Webhose articles by ticker or company name."""
     keyword  = TICKER_TO_NAME.get(ticker.upper(), ticker.lower())
+    patterns = [re.compile(rf'\b{k}\b', re.IGNORECASE) for k in keyword.split()]
     relevant = []
+
     for article in _articles:
-        text = (article.get("text", "") + " " + article.get("title", "")).lower()
-        if any(k in text for k in keyword.split()):
-            relevant.append(article)
-    return relevant
+        title = article.get("title", "")
+        text  = article.get("text",  "")
+        full  = title + " " + text
+        
+        # Confirm keyword appears in title or text (avoid false positives like "apple" in "apple pie recipe")
+        if not any(p.search(title) for p in patterns):
+            continue
+        # Have financial context
+        if not any(kw in full.lower() for kw in FINANCIAL_KEYWORDS):
+            continue
+        # Count mentions for relevance sorting
+        mentions = sum(len(p.findall(full)) for p in patterns)
+        min_mentions = 3 if len(ticker) <= 4 else 2  # ← use ticker, not keyword
+        if mentions < min_mentions:
+            continue
+        relevant.append((mentions, article))
+        
+    # Sort by most mentions — most relevant first
+    relevant.sort(key=lambda x: x[0], reverse=True)
+
+    # Cap at 5000 — too many means keyword too generic
+    result = [a[1] for a in relevant[:5000]]
+    return result
+
  
  
 def _get_articles_pinecone(ticker: str) -> list:
@@ -168,8 +211,19 @@ def _embed(text: str) -> list:
 def _score_baseline(articles: list) -> tuple:
     if _vectorizer is None or _model is None:
         return 0.0, "Neutral" # fallback if model not ready
- 
-    texts  = [a.get("text", a.get("title", ""))[:500] for a in articles[:10]]
+    
+    # Clean text before scoring
+    texts = [
+        _clean_text(a.get("text", a.get("title", "")))[:500]
+        for a in articles[:10]
+    ]
+    
+    # Skip empty texts after cleaning
+    texts = [t for t in texts if len(t.strip()) >= 50]
+
+    if not texts:
+        return 0.0, "Neutral"
+    
     X      = _vectorizer.transform(texts)
     preds  = _model.predict(X)
     probs  = _model.predict_proba(X)
@@ -184,30 +238,47 @@ def _score_baseline(articles: list) -> tuple:
     label     = "Positive" if avg_score > 0.1 else "Negative" if avg_score < -0.1 else "Neutral"
     return avg_score, label
  
+ # Advanced scoring using FinBERT (financial-specific transformer)
+_finbert_pipeline = None
+
+def _get_finbert():
+    global _finbert_pipeline
+    if _finbert_pipeline is None:
+        from transformers import pipeline
+        print("[sentiment] Loading FinBERT...")
+        _finbert_pipeline = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+        print("[sentiment] FinBERT ready.")
+    return _finbert_pipeline
+
 def _score_finbert(articles: list) -> tuple:
     """
     Advanced: score using FinBERT (financial-specific transformer).
     Swap in for _score_baseline when ready.
     pip install transformers torch
     """
-    from transformers import pipeline
-    finbert = pipeline("sentiment-analysis", model="ProsusAI/finbert")
- 
-    scores = []
-    for article in articles[:10]:
-        text   = article.get("text", article.get("title", ""))[:512]
+    finbert = _get_finbert()
+    scores  = []
+
+    for article in articles[:5]:  # cap at 5 for speed
+        raw    = article.get("text", article.get("title", ""))
+        text   = _clean_text(raw)[:512]  # clean before scoring
+        
+        if len(text.strip()) < 50:  # skip very short after cleaning
+            continue
+            
         result = finbert(text)[0]
         score  = result["score"] if result["label"] == "POSITIVE" else -result["score"]
         scores.append(score)
- 
+
     avg_score = round(sum(scores) / len(scores), 3) if scores else 0.0
     label     = "Positive" if avg_score > 0.1 else "Negative" if avg_score < -0.1 else "Neutral"
     return avg_score, label
  
  
 def _build_summary(articles: list, score: float, ticker: str) -> str:
-    tone    = "positive" if score > 0.1 else "negative" if score < -0.1 else "neutral"
-    excerpt = articles[0].get("text", articles[0].get("title", ""))[:300] if articles else ""
+    tone = "positive" if score > 0.1 else "negative" if score < -0.1 else "neutral"
+    raw = articles[0].get("text", articles[0].get("title", "")) if articles else ""
+    excerpt = _clean_text(raw)[:300]
     return (
         f"News sentiment for {ticker} is {tone} based on "
         f"{len(articles)} articles. Most relevant excerpt: {excerpt}..."
@@ -244,7 +315,8 @@ def sentiment_analyze(ticker: str) -> dict:
         }
  
     # Step 2: score — swap _score_baseline for _score_finbert for advanced
-    score, label = _score_baseline(articles)
+    #score, label = _score_baseline(articles)
+    score, label = _score_finbert(articles)
  
     # Step 3: build summary
     news_summary = _build_summary(articles, score, ticker)
