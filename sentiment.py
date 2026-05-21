@@ -168,7 +168,6 @@ def _get_articles_local(ticker: str) -> list:
     return result
 
  
- 
 def _get_articles_pinecone(ticker: str) -> list:
     """
     Query Pinecone knowledge base for articles related to the ticker.
@@ -315,8 +314,8 @@ def sentiment_analyze(ticker: str) -> dict:
         }
  
     # Step 2: score — swap _score_baseline for _score_finbert for advanced
-    #score, label = _score_baseline(articles)
-    score, label = _score_finbert(articles)
+    score, label = _score_baseline(articles)
+    #score, label = _score_finbert(articles) # Scored too aggresively negative, need to experiment with thresholds and cleaning more
  
     # Step 3: build summary
     news_summary = _build_summary(articles, score, ticker)
