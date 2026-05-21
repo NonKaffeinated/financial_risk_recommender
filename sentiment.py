@@ -33,6 +33,7 @@ import os
 import re
 import json
 import glob
+from datetime import datetime
  
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -136,6 +137,41 @@ def _clean_text(text: str) -> str:
     return text
 
 # Article fetching 
+DATE_FIELDS = ["published", "publishedAt", "date", "created_at", "timestamp"]
+
+def _parse_publish_date(article: dict) -> datetime | None:
+    for field in DATE_FIELDS:
+        raw = article.get(field)
+        if not raw:
+            continue
+        if isinstance(raw, (int, float)):
+            try:
+                return datetime.fromtimestamp(raw)
+            except Exception:
+                continue
+        raw = str(raw).strip()
+        if not raw:
+            continue
+        if raw.endswith("Z"):
+            raw = raw[:-1]
+        try:
+            return datetime.fromisoformat(raw)
+        except Exception:
+            for fmt in [
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d %H:%M",
+                "%Y-%m-%d",
+                "%m/%d/%Y",
+                "%d %b %Y",
+                "%b %d, %Y",
+            ]:
+                try:
+                    return datetime.strptime(raw, fmt)
+                except Exception:
+                    continue
+    return None
+
+
 def _get_articles_local(ticker: str) -> list:
     """Filter local Webhose articles by ticker or company name."""
     keyword  = TICKER_TO_NAME.get(ticker.upper(), ticker.lower())
@@ -158,13 +194,15 @@ def _get_articles_local(ticker: str) -> list:
         min_mentions = 3 if len(ticker) <= 4 else 2  # ← use ticker, not keyword
         if mentions < min_mentions:
             continue
-        relevant.append((mentions, article))
+
+        publish_date = _parse_publish_date(article)
+        relevant.append((publish_date, mentions, article))
         
-    # Sort by most mentions — most relevant first
-    relevant.sort(key=lambda x: x[0], reverse=True)
+    # Sort by recency first, then by mentions for relevance
+    relevant.sort(key=lambda x: (x[0] or datetime.min, x[1]), reverse=True)
 
     # Cap at 5000 — too many means keyword too generic
-    result = [a[1] for a in relevant[:5000]]
+    result = [a[2] for a in relevant[:5000]]
     return result
 
  

@@ -20,7 +20,6 @@ import re
 import textwrap
 # import fitz
 
-
 delimiter = "######"
 chatContext = [
     {'role':'system', 'content': f"""\
@@ -277,18 +276,18 @@ Please make response message within 800 words.
                     top_k=3,
                     include_metadata=True,
                     namespace='sjsunlp')
-    # print(res)
 
     self.contexts = [
-        x["metadata"]["text"] for x in res["matches"]
+        x["metadata"]["text"] for x in res.get("matches", []) if x.get("metadata", {}).get("text")
     ]
 
-    # print(contexts)
+    # If no relevant documents are found, skip RAG entirely.
+    if not self.contexts:
+        print("[EServer] No RAG documents found; skipping earnings analysis.")
+        return None
 
     # first we retrieve relevant items from Pinecone
-    retrieved_knowledge = self.retrieve(query,"sjsunlp")
-
-    # print(retrieved_knowledge)
+    retrieved_knowledge = self.retrieve(query, "sjsunlp")
 
     # Infuse the knowledge into the final messages
     knowledge_message = {"role": "system", "content": f"""
@@ -298,16 +297,10 @@ Please make response message within 800 words.
 
     # Come out a temp list to hold knowledge
     context_query_knowledge = chatContext + [knowledge_message, query_message]
-    # print("context_query_knowledge: ", context_query_knowledge)
-
     response = self.response_request(context_query_knowledge, model=self.MODEL, temperature=0)
 
-    # print(response.output_text)
-    chatContext.append(response_message)
     self.chatBot_Response = wrap_text(response.output_text)
-    # print(self.chatBot_Response)
-    
-    response_message = {"role": "assistant", "content":f"{response.output_text}"}
+    response_message = {"role": "assistant", "content": f"{response.output_text}"}
     chatContext.append(response_message)
     return self.chatBot_Response
 
@@ -327,14 +320,14 @@ Please make response message within 800 words.
                       include_metadata=True,
                       namespace=name_space)
     self.contexts = [
-        x["metadata"]["text"] for x in res["matches"]
+        x["metadata"]["text"] for x in res.get("matches", []) if x.get("metadata", {}).get("text")
         ]
 
-    #print("Length of contexts: ", len(contexts))
-    #print(contexts)
+    if not self.contexts:
+        return ""
 
     # build our prompt with the retrieved contexts included
-    prompt = " "
+    prompt = ""
 
     # append contexts until hitting limit
     count = 0
@@ -433,7 +426,10 @@ Please make response message within 800 words.
     print(f'\nEarning Server Response:\n\n{self.chatBot_Response}\n')
     return self.chatBot_Response
 
-
+  def query_EServer_query(self, query):
+    self.query_RAG_str(query)
+    print(f'\nEarning Server Response:\n\n{self.chatBot_Response}\n')
+    return self.chatBot_Response
 
 
   

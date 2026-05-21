@@ -46,6 +46,75 @@ st.set_page_config(
     layout="centered",
 )
 
+# Load modules with visible startup spinners
+with st.spinner("Training Isolation Forest on baseline companies..."):
+    try:
+        from financial import financial_analyze
+        FINANCIAL_READY = True
+    except ImportError:
+        FINANCIAL_READY = False
+        def financial_analyze(ticker: str) -> dict:
+            return {
+                "anomaly_score": None,
+                "flags":         [],
+                "summary":       "Financial module not available.",
+                "ratios":        {}
+            }
+
+with st.spinner("Training Logistic Regression and TF-IDF on financial news articles..."):
+    try:
+        from sentiment import sentiment_analyze
+        SENTIMENT_READY = True
+    except ImportError:
+        SENTIMENT_READY = False
+        def sentiment_analyze(ticker: str) -> dict:
+            return {
+                "score":        None,
+                "label":        "N/A",
+                "news_summary": "Sentiment module not available.",
+            }
+
+with st.spinner("Weighting risk scores..."):
+    try:
+        from risk import compute_risk
+        RISK_READY = True
+    except ImportError:
+        RISK_READY = False
+        def compute_risk(financial: dict, sentiment: dict, method: str = "rule_based") -> dict:
+            return {
+                "level":          "N/A",
+                "trust_score":    None,
+                "recommendation": "Awaiting full module integration.",
+                "raw_risk_score": None,
+                "method":         method,
+            }
+
+with st.spinner("Loading Llama 3 model from Ollama..."):
+    from chatbot import chat, extract_ticker, format_scoring_markdown
+
+ESERVER_READY = False
+_eserver = None
+
+if "eserver_initialized" not in st.session_state:
+    with st.spinner("Loading earnings RAG server..."):
+        try:
+            from earning_server import EServer
+            _eserver = EServer()
+            ESERVER_READY = True
+            st.session_state.eserver_ready = True
+            st.session_state._eserver = _eserver
+            print("[app] EServer ready.")
+        except Exception as e:
+            ESERVER_READY = False
+            _eserver = None
+            st.session_state.eserver_ready = False
+            st.session_state._eserver = None
+            print(f"[app] EServer not available: {e}")
+    st.session_state.eserver_initialized = True
+else:
+    ESERVER_READY = st.session_state.eserver_ready
+    _eserver = st.session_state._eserver
+
 # Header
 st.title("FinSage")
 st.caption("Financial Risk Recommender · Powered by Ollama (local)")
@@ -56,7 +125,6 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "intro_shown" not in st.session_state:
     st.session_state.intro_shown = False
-
 
 # Sidebar
 with st.sidebar:
@@ -69,22 +137,21 @@ with st.sidebar:
         dot = '<span style="color:#4ade80">●</span>' if ready else '<span style="color:#f87171">●</span>'
         status = "Ready" if ready else "Not Ready"
         return f'<span>{dot} {label} — {status}</span>'
+    
+    # Display module availability and display status
+    st.markdown(
+    _pill("financial.py",      FINANCIAL_READY) + "<br>" +
+    _pill("sentiment.py",      SENTIMENT_READY) + "<br>" +
+    _pill("risk.py",           RISK_READY)      + "<br>" +
+    _pill("earning_server.py", ESERVER_READY),
+    unsafe_allow_html=True,
+)
 
     # Clear chat button
     if st.button("Clear chat"):
         st.session_state.chat_history = [] # Reset chat history
         st.session_state.intro_shown = False # Reset intro flag
         st.rerun() 
-
-# Added spinners for each import to indicate loading status of each component
-with st.spinner("Training Isolation Forest on baseline companies..."):
-    from financial import financial_analyze
-with st.spinner("Training Logistic Regression and TF-IDF on financial news articles..."):
-    from sentiment import sentiment_analyze
-with st.spinner("Weighting risk scores..."):
-    from risk import compute_risk 
-with st.spinner("Loading Llama 3 model from Ollama..."):
-    from chatbot import chat, extract_ticker, format_scoring_markdown
     
 # If intro not shown, show it and save to history. Otherwise, render chat history from session state. 
 # Ensures introduction is shown only on first visit or after clearing chat, and chat history persists across interactions without re-rendering the intro.
@@ -113,9 +180,9 @@ else:
 if prompt := st.chat_input("Ask about a company's financial risk..."):
 
     ticker = extract_ticker(prompt)
+    earnings_rec = None
 
     risk_method = os.environ.get("RISK_METHOD", "rule_based")
-
 
     if ticker is not None:
         with st.spinner(f"Loading data for {ticker}..."):
@@ -123,7 +190,19 @@ if prompt := st.chat_input("Ask about a company's financial risk..."):
                 fin = financial_analyze(ticker)
                 sent = sentiment_analyze(ticker)
                 risk = compute_risk(fin, sent, method=risk_method)
-                scoring_md = format_scoring_markdown(ticker, fin, sent, risk)
+
+                earnings_rec = None
+                if ESERVER_READY and _eserver:
+                    try:
+                        full_query = f"Should an individual investor buy, sell, or hold {ticker} stock before the next earnings date?"
+                        earnings_rec = _eserver.query_RAG_str(full_query)
+                        if not earnings_rec:
+                            print(f"[app] No Pinecone earnings docs found for {ticker}; skipping RAG portion.")
+                            earnings_rec = None
+                    except Exception as e:
+                        print(f"[app] EServer query failed: {e}")
+
+                scoring_md = format_scoring_markdown(ticker, fin, sent, risk, earnings_rec)
             except Exception as exc:
                 st.warning(f"Could not load scoring data for {ticker}: {exc}")
                 scoring_md = f'Could not load scoring data for {ticker}: {exc}'

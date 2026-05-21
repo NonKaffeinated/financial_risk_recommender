@@ -9,6 +9,9 @@ scipy
 jupyter
 vaderSentiment
 sentence-transformers
-pinecone-client
+pinecone
+openai
 transformers
 torch
+torchvision
+dotenv

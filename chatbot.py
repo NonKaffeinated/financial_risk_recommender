@@ -14,28 +14,33 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3")
 
 SYSTEM_PROMPT = """
 You are FinSage, a financial risk and trustworthiness analyst AI.
-You explain financial risk signals and news sentiment in clear, plain language for finance enthusiasts. When provided a report, you are to use the information from the report to answer the follow-up questions for the users. Make sure to be true to the report, and do not hesitate to BOTH encourage and discourage buying / selling based on the report generated with the user's prompt.
+You explain financial risk signals and news sentiment in clear, plain language for finance enthusiasts.
+When provided a report, use only the information from that report to answer follow-up questions.
+Be direct — both encourage and discourage buying or selling based strictly on what the report says.
 
-When the user message includes a `---` section with "Structured analysis" (the pipeline output):
-- Base your answer entirely on that block: trust score, risk level, anomaly score, sentiment label/score, and recommendation text.
-- Restate and explain only those metrics. Do not introduce other scores (e.g. "out of 5", alternate composite scores), revenue figures, cash figures, or ratings not in the block.
-- If something is missing from the block, say it is not in this snapshot rather than deriving your own conclusions. ALWAYS CITE FIRST.
+When the user message includes a structured analysis block:
+- Base your answer entirely on that block: trust score, risk level, anomaly score, sentiment label/score, and recommendation.
+- Restate and explain only those metrics. Do not introduce other scores, revenue figures, or ratings not in the block.
+- If something is missing from the block, say it is not in this snapshot — never derive your own conclusions.
+- If an Earnings analysis section is present, include the buy/sell/hold recommendation in your response.
+- If no Earnings analysis section is present, do not mention earnings or make up a recommendation.
+- Never narrate what you are about to do — go straight to the answer.
 
-When given a structured risk report for a company you:
-1. Summarise the overall risk level in 1-2 sentences (match the risk level and trust score from the data).
-2. Highlight the top signals (financial anomalies, sentiment, composite/trust score as given).
+When given a structured risk report:
+1. Summarise the overall risk level in 1-2 sentences matching the risk level and trust score from the data.
+2. Highlight the top signals — financial anomalies, sentiment, composite trust score.
 3. Explain what each signal means in plain English.
 4. Give a brief recommendation aligned with the recommendation line in the data.
 5. Answer follow-up questions about the report with precision.
 
-When no grounding / structured analysis is provided:
+When no structured analysis is provided:
 - Answer general questions about financial risk and investing
 - Explain what metrics matter when evaluating a company
 - Discuss industries and market trends in general
 
 Always be concise, factual, and professional.
 Never fabricate specific scores, percentages, ratings, or data sources.
-Only use data explicitly provided to you and never invent numbers.
+Only use data explicitly provided — never invent numbers.
 """.strip()
 
 _TICKER_BLOCKLIST = frozenset({
@@ -109,30 +114,38 @@ def format_scoring_markdown(
     financial: dict,
     sentiment: dict,
     risk: dict,
+    earnings: str | None = None,
 ) -> str:
-    return "\n".join(
-        [
-            f"**Ticker:** `{ticker}`",
+    lines = [
+        f"**Ticker:** `{ticker}`",
+        "",
+        "**Financial signals** (Yahoo Finance + Isolation Forest anomaly blend)",
+        f"- Anomaly score (0 = normal, 1 = highly anomalous): **{financial.get('anomaly_score')}**",
+        f"- Flags: {', '.join(financial.get('flags') or ['(none)'])}",
+        f"- Summary: {financial.get('summary', '')}",
+        "",
+        "**News sentiment** (TF-IDF + LR / FinBERT on matched articles)",
+        f"- Score (−1 to 1): **{sentiment.get('score')}**",
+        f"- Label: **{sentiment.get('label')}**",
+        f"- Summary: {sentiment.get('news_summary', '')}",
+        "",
+        "**Composite risk** (rule-based blend: "
+        f"{FINANCIAL_WEIGHT:.0%} financial + {SENTIMENT_WEIGHT:.0%} sentiment → raw risk 0–1, then trust score)",
+        f"- Method: **{risk.get('method', 'rule_based')}**",
+        f"- Raw risk score (0–1): **{risk.get('raw_risk_score')}**",
+        f"- Trust score (0–100): **{risk.get('trust_score')}**",
+        f"- Risk level: **{risk.get('level')}**",
+        f"- Recommendation: {risk.get('recommendation', '')}",
+    ]
+    # Only add earnings section if documents were found
+    if earnings:
+        lines += [
             "",
-            "**Financial signals** (Yahoo Finance + Isolation Forest anomaly blend)",
-            f"- Anomaly score (0 = normal, 1 = highly anomalous): **{financial.get('anomaly_score')}**",
-            f"- Flags: {', '.join(financial.get('flags') or ['(none)'])}",
-            f"- Summary: {financial.get('summary', '')}",
-            "",
-            "**News sentiment** (baseline model on matched articles, if available)",
-            f"- Score (−1 to 1): **{sentiment.get('score')}**",
-            f"- Label: **{sentiment.get('label')}**",
-            f"- Summary: {sentiment.get('news_summary', '')}",
-            "",
-            "**Composite risk** (rule-based blend: "
-            f"{FINANCIAL_WEIGHT:.0%} financial + {SENTIMENT_WEIGHT:.0%} sentiment → raw risk 0–1, then trust score)",
-            f"- Method: **{risk.get('method', 'rule_based')}**",
-            f"- Raw risk score (0–1): **{risk.get('raw_risk_score')}**",
-            f"- Trust score (0–100): **{risk.get('trust_score')}**",
-            f"- Risk level: **{risk.get('level')}**",
-            f"- Recommendation: {risk.get('recommendation', '')}",
+            "**Earnings analysis** (RAG — BofA, Morgan Stanley, JPM via Pinecone)",
+            earnings.strip(),
         ]
-    )
+
+    return "\n".join(lines)
 
 def chat(
     history: list[dict]
@@ -144,12 +157,20 @@ def chat(
     *history* must be the conversation so far **not including** the current user turn
     (the app stores the user message in session state separately).
     """
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT}
+    ]
+    if history and history[0].get("role") == "system":
+        messages = history
+    else:
+        messages.extend(history)
+
     response = requests.post(
         f"{OLLAMA_HOST}/api/chat",
         json={
             "model":    OLLAMA_MODEL,
-            "messages": history,
-            "stream":   True,        
+            "messages": messages,
+            "stream":   True,
         },
         stream=True,
         timeout=60,
@@ -162,5 +183,5 @@ def chat(
             chunk = json.loads(line)
             token = chunk.get("message", {}).get("content", "")
             full_reply += token
-            yield token        
+            yield token
 
