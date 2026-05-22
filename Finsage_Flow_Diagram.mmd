@@ -1,0 +1,60 @@
+flowchart TD
+    A[User opens Streamlit app] --> B[app.py receives query]
+    B --> C{Company target in braces}
+    C -- No --> D[General chatbot response only]
+    C -- Yes --> E[Resolve ticker or company]
+
+    E --> F[financial.py financial_analyze]
+    E --> G[sentiment.py sentiment_analyze]
+
+    subgraph Financial_branch
+        F --> F1[yfinance pulls company ratios]
+        F1 --> F2[Extract six financial features]
+        F2 --> F3[Isolation Forest scores anomaly]
+        F2 --> F4[Threshold rules generate warning flags]
+        F3 --> F5[Blend isolation score and flag score]
+        F4 --> F5
+        F5 --> F6[Return anomaly score flags summary]
+    end
+
+    subgraph Sentiment_branch
+        G --> G1{Use Pinecone enabled}
+        G1 -- No --> G2[Load local Webhose dataset]
+        G2 --> G3[Train TF IDF plus Logistic Regression on startup]
+        G3 --> G4[Filter articles by ticker keywords]
+        G4 --> G5[Predict sentiment for matching articles]
+        G5 --> G6[Aggregate into score and label]
+        G6 --> G7[Return score label news summary]
+
+        G1 -- Yes --> G8[Query Pinecone index]
+        G8 --> G9[Retrieve related article metadata]
+        G9 --> G6
+
+        G10[Future upgrade FinBERT scoring] -. optional .-> G6
+    end
+
+    F6 --> H[risk.py compute_risk]
+    G7 --> H
+
+    subgraph Risk_branch
+        H --> H1{Scoring method}
+        H1 -- rule based --> H2[Weighted blend 85 financial 15 sentiment]
+        H1 -- content based --> H3[Cosine similarity against known profiles]
+        H2 --> H4[Convert raw risk to trust score]
+        H3 --> H4
+        H4 --> H5[Assign Low Medium High risk level]
+        H5 --> H6[Generate recommendation text]
+        H6 --> H7[Return level trust score recommendation raw score method]
+    end
+
+    H7 --> I[chatbot.py explains results in plain English]
+    D --> I
+    I --> J[Streamlit shows final answer]
+
+    K[tests test_financial.py] -. tests .-> F
+    L[tests test_sentiment.py] -. tests .-> G
+    M[tests test_risk.py] -. tests .-> H
+
+    N[EDA and benchmarking work] -. supports evaluation .-> G
+    N -. future evaluation .-> F
+    N -. future evaluation .-> H

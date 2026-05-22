@@ -1,0 +1,33 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontSize': '26px', 'fontFamily': 'Arial', 'lineColor': '#666', 'primaryColor': '#dff0d8', 'primaryTextColor': '#111', 'primaryBorderColor': '#93c47d', 'secondaryColor': '#f4f4f4', 'tertiaryColor': '#ffffff' }}}%%
+
+
+
+flowchart LR
+    %% Row 1
+    B[app.py receives prompt]
+    B --> C[Check for company or ticker]
+    C -->|No| D[General chat only<br/>chatbot.py replies without scoring]
+    C -->|Yes| E[Resolve ticker with yfinance]
+
+    %% Row 2
+    E --> F[financial.py<br/>Pull Yahoo ratios<br/>Isolation Forest]
+    F --> G[Build financial flags<br/>and summary]
+
+    E --> H[sentiment.py<br/>Load Webhose articles<br/>TF-IDF + Logistic Regression]
+
+    %% Row 3
+    H --> I[Build sentiment label<br/>and news summary]
+
+    J[risk.py combines signals<br/>85 percent financial / 15 percent sentiment]
+
+
+    %% Row 4
+    J --> K[Convert raw risk to trust score<br/>and risk level]
+
+    K --> L[chatbot.py formats explanation]
+    L --> M[Streamlit shows score<br/>summary<br/>recommendation]
+    M --> N[User sees concise decision support]
+
+    K <-->K1[Earning Server]
+    K1 <-->K2[Financial Knowledge Base]
+    
