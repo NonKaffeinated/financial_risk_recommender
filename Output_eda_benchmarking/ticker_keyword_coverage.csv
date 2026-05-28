@@ -1,0 +1,11 @@
+ticker,keyword,Positive,Negative,total
+AAPL,apple,1147,993,2140
+AMZN,amazon,897,604,1501
+GOOGL,google,1295,977,2272
+JPM,jpmorgan,946,711,1657
+META,meta,3602,2402,6004
+META,facebook,2026,1460,3486
+MSFT,microsoft,927,494,1421
+NFLX,netflix,370,125,495
+NVDA,nvidia,1939,954,2893
+TSLA,tesla,1042,585,1627

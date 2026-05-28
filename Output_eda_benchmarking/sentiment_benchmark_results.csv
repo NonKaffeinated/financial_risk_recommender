@@ -1,0 +1,5 @@
+model,accuracy,precision_binary,recall_binary,f1_binary,precision_weighted,recall_weighted,f1_weighted,roc_auc
+vader_baseline,0.6805,0.663,0.8968,0.7624,0.6961,0.6805,0.6554,
+tfidf_logreg_production,0.8455,0.8543,0.8798,0.8668,0.8452,0.8455,0.8451,0.9194
+tfidf_logreg_balanced,0.8294,0.868,0.8273,0.8471,0.8317,0.8294,0.8299,0.9085
+tfidf_rf_balanced,0.8527,0.8562,0.8921,0.8738,0.8525,0.8527,0.8521,0.933

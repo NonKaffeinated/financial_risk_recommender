@@ -1,0 +1,2 @@
+model,accuracy,precision_binary,recall_binary,f1_binary,precision_weighted,recall_weighted,f1_weighted,roc_auc,articles_sampled,inference_seconds,sec_per_article
+finbert_prosusai,0.7383,0.8532,0.5756,0.6874,0.7665,0.7383,0.7312,,10000,5468.0,0.547

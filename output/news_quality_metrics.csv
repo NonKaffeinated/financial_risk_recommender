@@ -1,7 +1,0 @@
-metric,value
-records,83000.0
-has_title_rate,0.998
-has_text_rate,1.0
-avg_title_len,78.36
-avg_text_len,3368.29
-median_text_len,2571.0

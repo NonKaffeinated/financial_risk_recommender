@@ -1,0 +1,11 @@
+ticker,expected_level,rule_based_level,rule_based_trust,rule_based_correct,content_based_level,content_based_trust,content_based_correct
+NVDA,Low,Low,67.9,1,Medium,59.1,0
+GOOGL,Low,Low,68.7,1,Medium,59.4,0
+AMZN,Low,Low,69.6,1,Medium,59.8,0
+META,Low,Low,69.6,1,Medium,59.8,0
+COST,Low,Low,68.7,1,Medium,59.4,0
+BYND,High,Medium,56.0,0,Medium,48.3,0
+AMC,High,Medium,50.0,0,Medium,44.6,0
+NKLA,High,Medium,60.2,0,Medium,52.4,0
+LCID,High,Medium,51.7,0,Medium,44.9,0
+BLNK,High,Medium,50.8,0,Medium,44.8,0

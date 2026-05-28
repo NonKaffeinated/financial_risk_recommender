@@ -1,0 +1,17 @@
+ticker,true_label,anomaly_score,flag_count,predicted_label,correct
+NVDA,0,0.29,0,0,1
+GOOGL,0,0.28,0,0,1
+AMZN,0,0.27,0,0,1
+META,0,0.27,0,0,1
+COST,0,0.28,0,0,1
+TSLA,0,0.29,0,0,1
+ADBE,0,0.32,1,0,1
+CRM,0,0.33,1,0,1
+BYND,1,0.43,2,0,0
+AMC,1,0.5,3,1,1
+NKLA,1,0.38,1,0,0
+LCID,1,0.48,3,0,0
+BLNK,1,0.49,3,0,0
+BBBY,1,0.38,1,0,0
+RIDE,1,0.38,1,0,0
+SPCE,1,0.49,3,0,0
